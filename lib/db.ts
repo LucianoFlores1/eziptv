@@ -118,7 +118,18 @@ class OTTDatabase extends Dexie {
       series: 'seriesId, categoryId, name, [categoryId+name]',
       seriesInfo: 'seriesId',
       favorites: '++id, [contentId+contentType], contentType',
-      playbackState: '++id, [contentId+contentType], watchedAt',
+      playbackState: '++id, [contentId+contentType], contentType, watchedAt',
+      syncMeta: 'key',
+    })
+
+    this.version(2).stores({
+      categories: 'id, type, [type+name]',
+      channels: 'streamId, categoryId, name, [categoryId+name]',
+      movies: 'streamId, categoryId, name, rating, [categoryId+name]',
+      series: 'seriesId, categoryId, name, [categoryId+name]',
+      seriesInfo: 'seriesId',
+      favorites: '++id, [contentId+contentType], contentType',
+      playbackState: '++id, [contentId+contentType], contentType, watchedAt',
       syncMeta: 'key',
     })
   }
