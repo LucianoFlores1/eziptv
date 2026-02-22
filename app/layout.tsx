@@ -32,6 +32,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
+      <head>
+        <meta httpEquiv="Content-Security-Policy" content="upgrade-insecure-requests" />
+      </head>
       <body className="font-sans antialiased bg-background text-foreground">
         <Providers>{children}</Providers>
       </body>

@@ -15,7 +15,7 @@ import {
   RefreshCw,
   ArrowLeft,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, isHlsUrl, isNativeVideoUrl } from '@/lib/utils'
 
 interface VideoPlayerProps {
   streamUrl: string
@@ -52,6 +52,9 @@ export function VideoPlayer({
   const [isSeeking, setIsSeeking] = useState(false)
 
   const isLive = contentType === 'live'
+  const isHls = isHlsUrl(streamUrl)
+  const isNative = isNativeVideoUrl(streamUrl)
+  const isMkv = streamUrl.toLowerCase().includes('.mkv')
 
   // Initialize player
   useEffect(() => {
@@ -186,6 +189,18 @@ export function VideoPlayer({
         <p className="text-sm font-medium text-foreground text-center">
           {error}
         </p>
+        {isMkv && (
+          <p className="text-xs text-muted-foreground text-center max-w-xs">
+            This stream uses MKV format which has limited browser support.
+            Try using a Chromium-based browser (Chrome, Edge, Brave) for
+            best compatibility.
+          </p>
+        )}
+        {!isHls && !isNative && (
+          <p className="text-xs text-muted-foreground text-center max-w-xs">
+            This stream format may not be supported for in-browser playback.
+          </p>
+        )}
         <div className="flex gap-3">
           <button
             onClick={() => retry(streamUrl)}

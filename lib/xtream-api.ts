@@ -1,4 +1,5 @@
 import { API_TIMEOUT } from './constants'
+import { upgradeToHttps } from './utils'
 
 export interface XtreamCredentials {
   server: string
@@ -338,13 +339,18 @@ export const xtreamApi = {
     const server = normalizeServer(credentials.server)
     const base = `${server}`
 
+    let raw: string
     if (type === 'live') {
-      return `${base}/live/${credentials.username}/${credentials.password}/${streamId}.m3u8`
+      raw = `${base}/live/${credentials.username}/${credentials.password}/${streamId}.m3u8`
+    } else if (type === 'vod') {
+      raw = `${base}/movie/${credentials.username}/${credentials.password}/${streamId}.${extension || 'mp4'}`
+    } else {
+      // series episode
+      raw = `${base}/series/${credentials.username}/${credentials.password}/${streamId}.${extension || 'mp4'}`
     }
-    if (type === 'vod') {
-      return `${base}/movie/${credentials.username}/${credentials.password}/${streamId}.${extension || 'mp4'}`
-    }
-    // series episode
-    return `${base}/series/${credentials.username}/${credentials.password}/${streamId}.${extension || 'mp4'}`
+
+    // Attempt HTTPS upgrade; the browser CSP tag will also try, but this
+    // ensures the URL we hand to HLS.js / <video> is already HTTPS.
+    return upgradeToHttps(raw)
   },
 }
