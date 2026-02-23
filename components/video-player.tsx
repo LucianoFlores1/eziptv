@@ -14,8 +14,9 @@ import {
   AlertTriangle,
   RefreshCw,
   ArrowLeft,
+  ExternalLink,
 } from 'lucide-react'
-import { cn, isHlsUrl, isNativeVideoUrl } from '@/lib/utils'
+import { cn, isHlsUrl, isNativeVideoUrl, isValidStreamUrl } from '@/lib/utils'
 
 interface VideoPlayerProps {
   streamUrl: string
@@ -39,7 +40,8 @@ export function VideoPlayer({
   const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const { isReady, error, initPlayer, destroyPlayer, retry } = usePlayer()
+  const { isReady, error, initPlayer, destroyPlayer, retry, mode, activeUrl } =
+    usePlayer()
   const { savePosition } = usePlayback()
 
   const [isPlaying, setIsPlaying] = useState(false)
@@ -52,94 +54,86 @@ export function VideoPlayer({
   const [isSeeking, setIsSeeking] = useState(false)
 
   const isLive = contentType === 'live'
-  const isHls = isHlsUrl(streamUrl)
-  const isNative = isNativeVideoUrl(streamUrl)
   const isMkv = streamUrl.toLowerCase().includes('.mkv')
 
-  // Initialize player
+  // ----- Initialise the player once the <video> element is in the DOM -----
   useEffect(() => {
-    if (videoElRef.current) {
-      initPlayer(videoElRef.current, streamUrl, startPosition)
-    }
+    const videoEl = videoElRef.current
+    if (!videoEl) return
+    if (!isValidStreamUrl(streamUrl)) return
+
+    // requestAnimationFrame inside initPlayer already defers HLS.js attach
+    // to after the current render, but we also guard here.
+    initPlayer(videoEl, streamUrl, startPosition)
+
     return () => {
       destroyPlayer()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [streamUrl])
 
-  // Save playback position periodically
+  // ----- Save playback position periodically (VOD / Series only) -----
   useEffect(() => {
     if (isLive) return
+
     saveTimerRef.current = setInterval(() => {
-      if (videoElRef.current && !videoElRef.current.paused) {
-        savePosition(
-          contentId,
-          contentType,
-          videoElRef.current.currentTime,
-          videoElRef.current.duration || 0
-        )
+      const video = videoElRef.current
+      if (video && !video.paused) {
+        savePosition(contentId, contentType, video.currentTime, video.duration || 0)
       }
     }, PLAYBACK_SAVE_INTERVAL)
 
     return () => {
       if (saveTimerRef.current) clearInterval(saveTimerRef.current)
-      // Save final position on unmount
-      if (videoElRef.current) {
-        savePosition(
-          contentId,
-          contentType,
-          videoElRef.current.currentTime,
-          videoElRef.current.duration || 0
-        )
+      // Save final position on teardown
+      const video = videoElRef.current
+      if (video) {
+        savePosition(contentId, contentType, video.currentTime, video.duration || 0)
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contentId, contentType, isLive])
 
-  // Auto-hide controls
+  // ----- Auto-hide controls -----
   const resetControlsTimer = useCallback(() => {
     setShowControls(true)
     if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current)
     controlsTimerRef.current = setTimeout(() => {
-      if (!videoElRef.current?.paused) {
-        setShowControls(false)
-      }
+      if (!videoElRef.current?.paused) setShowControls(false)
     }, 3000)
   }, [])
 
+  // ----- Transport controls -----
   const togglePlay = useCallback(() => {
-    if (!videoElRef.current) return
-    if (videoElRef.current.paused) {
-      videoElRef.current.play().catch(() => {})
-    } else {
-      videoElRef.current.pause()
-    }
+    const v = videoElRef.current
+    if (!v) return
+    if (v.paused) v.play().catch(() => {})
+    else v.pause()
     resetControlsTimer()
   }, [resetControlsTimer])
 
   const toggleMute = useCallback(() => {
-    if (!videoElRef.current) return
-    videoElRef.current.muted = !videoElRef.current.muted
-    setIsMuted(videoElRef.current.muted)
+    const v = videoElRef.current
+    if (!v) return
+    v.muted = !v.muted
+    setIsMuted(v.muted)
   }, [])
 
   const toggleFullscreen = useCallback(() => {
     if (!containerRef.current) return
-    if (document.fullscreenElement) {
-      document.exitFullscreen()
-    } else {
-      containerRef.current.requestFullscreen().catch(() => {})
-    }
+    if (document.fullscreenElement) document.exitFullscreen()
+    else containerRef.current.requestFullscreen().catch(() => {})
   }, [])
 
   const handleSeek = useCallback((value: number) => {
-    if (!videoElRef.current) return
-    videoElRef.current.currentTime = value
+    const v = videoElRef.current
+    if (!v) return
+    v.currentTime = value
     setCurrentTime(value)
     setIsSeeking(false)
   }, [])
 
-  // Video event listeners
+  // ----- Wire up <video> DOM events -----
   useEffect(() => {
     const video = videoElRef.current
     if (!video) return
@@ -176,32 +170,28 @@ export function VideoPlayer({
     const h = Math.floor(seconds / 3600)
     const m = Math.floor((seconds % 3600) / 60)
     const s = Math.floor(seconds % 60)
-    if (h > 0) {
+    if (h > 0)
       return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
-    }
     return `${m}:${s.toString().padStart(2, '0')}`
   }
 
+  // ----- Error state -----
   if (error) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 bg-background p-4">
+      <div className="flex h-full flex-col items-center justify-center gap-4 bg-background p-6">
         <AlertTriangle className="h-12 w-12 text-destructive" />
-        <p className="text-sm font-medium text-foreground text-center">
+        <p className="text-sm font-medium text-foreground text-center max-w-sm">
           {error}
         </p>
+
         {isMkv && (
           <p className="text-xs text-muted-foreground text-center max-w-xs">
-            This stream uses MKV format which has limited browser support.
-            Try using a Chromium-based browser (Chrome, Edge, Brave) for
-            best compatibility.
+            This stream uses MKV format which has limited browser support. Try
+            Chromium-based browsers (Chrome, Edge, Brave) or open in VLC below.
           </p>
         )}
-        {!isHls && !isNative && (
-          <p className="text-xs text-muted-foreground text-center max-w-xs">
-            This stream format may not be supported for in-browser playback.
-          </p>
-        )}
-        <div className="flex gap-3">
+
+        <div className="flex flex-wrap items-center justify-center gap-3">
           <button
             onClick={() => retry(streamUrl)}
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
@@ -209,6 +199,18 @@ export function VideoPlayer({
             <RefreshCw className="h-4 w-4" />
             Retry
           </button>
+
+          {/* VLC / external player fallback for MKV or failed native playback */}
+          {(isMkv || (contentType === 'vod' && !isHlsUrl(streamUrl))) && activeUrl && (
+            <a
+              href={`vlc://${activeUrl}`}
+              className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground"
+            >
+              <ExternalLink className="h-4 w-4" />
+              Open in VLC
+            </a>
+          )}
+
           <button
             onClick={onBack}
             className="flex items-center gap-2 rounded-lg bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground"
@@ -216,6 +218,37 @@ export function VideoPlayer({
             Go Back
           </button>
         </div>
+
+        {/* Direct download link as last resort */}
+        {(isMkv || (contentType === 'vod' && !isHlsUrl(streamUrl))) && activeUrl && (
+          <a
+            href={activeUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            download
+            className="text-xs text-muted-foreground underline hover:text-foreground transition-colors"
+          >
+            Download file directly
+          </a>
+        )}
+      </div>
+    )
+  }
+
+  // ----- URL validation error -----
+  if (!isValidStreamUrl(streamUrl)) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 bg-background p-6">
+        <AlertTriangle className="h-12 w-12 text-destructive" />
+        <p className="text-sm font-medium text-foreground text-center">
+          Invalid stream URL
+        </p>
+        <button
+          onClick={onBack}
+          className="flex items-center gap-2 rounded-lg bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground"
+        >
+          Go Back
+        </button>
       </div>
     )
   }
@@ -232,13 +265,17 @@ export function VideoPlayer({
         ref={videoElRef}
         className="h-full w-full object-contain"
         playsInline
-        autoPlay
       />
 
       {/* Loading indicator */}
       {!isReady && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black">
           <div className="h-10 w-10 animate-spin rounded-full border-4 border-muted-foreground border-t-primary" />
+          {mode && (
+            <span className="text-xs text-muted-foreground">
+              {mode === 'hls' ? 'Loading HLS stream...' : 'Loading video...'}
+            </span>
+          )}
         </div>
       )}
 
@@ -319,11 +356,7 @@ export function VideoPlayer({
               className="text-white hover:text-primary transition-colors"
               aria-label={isPlaying ? 'Pause' : 'Play'}
             >
-              {isPlaying ? (
-                <Pause className="h-5 w-5" />
-              ) : (
-                <Play className="h-5 w-5" />
-              )}
+              {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
             </button>
 
             <button
@@ -331,14 +364,21 @@ export function VideoPlayer({
               className="text-white hover:text-primary transition-colors"
               aria-label={isMuted ? 'Unmute' : 'Mute'}
             >
-              {isMuted ? (
-                <VolumeX className="h-5 w-5" />
-              ) : (
-                <Volume2 className="h-5 w-5" />
-              )}
+              {isMuted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
             </button>
 
             <div className="flex-1" />
+
+            {/* VLC button for MKV while playing (non-error state) */}
+            {isMkv && activeUrl && (
+              <a
+                href={`vlc://${activeUrl}`}
+                onClick={(e) => e.stopPropagation()}
+                className="text-xs text-white/70 hover:text-white transition-colors underline"
+              >
+                VLC
+              </a>
+            )}
 
             <button
               onClick={toggleFullscreen}

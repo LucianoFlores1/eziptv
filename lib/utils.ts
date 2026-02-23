@@ -5,6 +5,22 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+// ---- URL validation ----
+
+/**
+ * Validates that a stream URL is a well-formed http(s) URL.
+ * Guards against empty strings, blob: leftovers, and relative paths.
+ */
+export function isValidStreamUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') return false
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 // ---- Stream URL helpers ----
 
 const HLS_EXTENSIONS = ['.m3u8']

@@ -3,120 +3,149 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 import Hls from 'hls.js'
 import { PLAYER_RETRY_COUNT, BUFFER_CONFIG } from '@/lib/constants'
-import { isHlsUrl, buildStreamUrlCandidates } from '@/lib/utils'
+import { isHlsUrl, buildStreamUrlCandidates, isValidStreamUrl } from '@/lib/utils'
 
 interface PlayerState {
   isReady: boolean
   isPlaying: boolean
   error: string | null
   retryCount: number
+  activeUrl: string | null
+  mode: 'hls' | 'native' | null
 }
 
+/**
+ * Core player hook.
+ *
+ * Manages the lifecycle for both HLS.js (.m3u8) and native <video> playback
+ * (mp4, mkv, webm, mov, ts). Handles HTTPS upgrade → HTTP fallback →
+ * CORS-proxy fallback automatically via buildStreamUrlCandidates.
+ */
 export function usePlayer() {
   const hlsRef = useRef<Hls | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const mountedRef = useRef(true)
+
+  // These refs avoid stale closures in event handlers
   const candidatesRef = useRef<string[]>([])
   const candidateIdxRef = useRef(0)
   const startPosRef = useRef(0)
+
+  // Stable abort ref – we increment this to invalidate stale async work
+  const generationRef = useRef(0)
 
   const [state, setState] = useState<PlayerState>({
     isReady: false,
     isPlaying: false,
     error: null,
     retryCount: 0,
+    activeUrl: null,
+    mode: null,
   })
 
-  const destroyPlayer = useCallback(() => {
+  /* ------------------------------------------------------------------ */
+  /*  Cleanup helpers                                                    */
+  /* ------------------------------------------------------------------ */
+
+  const clearRetryTimer = useCallback(() => {
     if (retryTimerRef.current) {
       clearTimeout(retryTimerRef.current)
       retryTimerRef.current = null
     }
+  }, [])
+
+  const destroyHls = useCallback(() => {
+    clearRetryTimer()
     if (hlsRef.current) {
       hlsRef.current.destroy()
       hlsRef.current = null
     }
+  }, [clearRetryTimer])
+
+  /**
+   * Full teardown – stops everything, resets the <video> element, and
+   * clears all state.  Safe to call multiple times.
+   */
+  const destroyPlayer = useCallback(() => {
+    generationRef.current += 1 // invalidate any pending async work
+    destroyHls()
+
+    const video = videoRef.current
+    if (video) {
+      video.removeAttribute('src')
+      video.load() // flush any in-flight blob: object URLs held by HLS.js
+    }
+
     candidatesRef.current = []
     candidateIdxRef.current = 0
-    setState({
-      isReady: false,
-      isPlaying: false,
-      error: null,
-      retryCount: 0,
-    })
-  }, [])
 
-  /**
-   * Try the next URL candidate. Returns true if there was a candidate to try.
-   */
-  const tryNextCandidate = useCallback((videoEl: HTMLVideoElement): boolean => {
-    const idx = candidateIdxRef.current + 1
-    if (idx >= candidatesRef.current.length) return false
-    candidateIdxRef.current = idx
-    const nextUrl = candidatesRef.current[idx]
-
-    // Destroy current HLS instance if any
-    if (hlsRef.current) {
-      hlsRef.current.destroy()
-      hlsRef.current = null
+    if (mountedRef.current) {
+      setState({
+        isReady: false,
+        isPlaying: false,
+        error: null,
+        retryCount: 0,
+        activeUrl: null,
+        mode: null,
+      })
     }
+  }, [destroyHls])
 
-    // Re-init with next candidate
-    loadUrl(videoEl, nextUrl, startPosRef.current)
-    return true
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  /* ------------------------------------------------------------------ */
+  /*  loadUrl – loads a single candidate into the <video> element        */
+  /* ------------------------------------------------------------------ */
 
-  /**
-   * Load a single URL into the video element (HLS.js or native).
-   */
   const loadUrl = useCallback(
-    (videoEl: HTMLVideoElement, url: string, startPosition?: number) => {
-      // ---- Native playback (mp4 / mkv / webm / mov / ts / non-m3u8) ----
-      if (!isHlsUrl(url)) {
+    (videoEl: HTMLVideoElement, url: string, startPosition: number, gen: number) => {
+      // Bail out if a newer init call has been made
+      if (gen !== generationRef.current) return
+
+      const hls = isHlsUrl(url)
+      setState((s) => ({ ...s, activeUrl: url, mode: hls ? 'hls' : 'native' }))
+
+      /* ---------- Native <video> (mp4 / mkv / webm / mov / ts) -------- */
+      if (!hls) {
+        // Clean up any previous HLS instance first
+        destroyHls()
+
         videoEl.src = url
-        if (startPosition && startPosition > 0) {
-          videoEl.currentTime = startPosition
-        }
 
         const onCanPlay = () => {
+          videoEl.removeEventListener('canplay', onCanPlay)
+          videoEl.removeEventListener('error', onError)
+          if (gen !== generationRef.current) return
+          if (startPosition > 0) videoEl.currentTime = startPosition
           setState((s) => ({ ...s, isReady: true }))
           videoEl.play().catch(() => {})
-          videoEl.removeEventListener('canplay', onCanPlay)
         }
 
-        const onNativeError = () => {
-          videoEl.removeEventListener('error', onNativeError)
+        const onError = () => {
           videoEl.removeEventListener('canplay', onCanPlay)
-          // Try next candidate URL before giving up
-          if (!tryNextCandidate(videoEl)) {
-            setState((s) => ({
-              ...s,
-              error:
-                'Playback failed. The format may not be supported by your browser, or the server blocked the request.',
-            }))
-          }
+          videoEl.removeEventListener('error', onError)
+          if (gen !== generationRef.current) return
+          advanceCandidate(videoEl, startPosition, gen)
         }
 
-        videoEl.addEventListener('canplay', onCanPlay)
-        videoEl.addEventListener('error', onNativeError)
+        videoEl.addEventListener('canplay', onCanPlay, { once: true })
+        videoEl.addEventListener('error', onError, { once: true })
         videoEl.load()
         return
       }
 
-      // ---- HLS playback (.m3u8) ----
+      /* ---------- Safari native HLS ----------------------------------- */
       if (!Hls.isSupported()) {
-        // Safari native HLS
         videoEl.src = url
-        if (startPosition && startPosition > 0) {
-          videoEl.currentTime = startPosition
-        }
+        if (startPosition > 0) videoEl.currentTime = startPosition
         videoEl.play().catch(() => {})
         setState((s) => ({ ...s, isReady: true }))
         return
       }
 
-      const hls = new Hls({
+      /* ---------- HLS.js ---------------------------------------------- */
+      destroyHls()
+
+      const hlsInstance = new Hls({
         maxBufferLength: BUFFER_CONFIG.maxBufferLength,
         maxMaxBufferLength: BUFFER_CONFIG.maxMaxBufferLength,
         maxBufferSize: BUFFER_CONFIG.maxBufferSize,
@@ -125,52 +154,50 @@ export function usePlayer() {
         startLevel: -1,
       })
 
-      hlsRef.current = hls
-      hls.loadSource(url)
-      hls.attachMedia(videoEl)
+      hlsRef.current = hlsInstance
+      hlsInstance.loadSource(url)
+      hlsInstance.attachMedia(videoEl)
 
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+        if (gen !== generationRef.current) return
         setState((s) => ({ ...s, isReady: true }))
-        if (startPosition && startPosition > 0) {
-          videoEl.currentTime = startPosition
-        }
+        if (startPosition > 0) videoEl.currentTime = startPosition
         videoEl.play().catch(() => {})
       })
 
-      hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (!data.fatal) return
+      hlsInstance.on(Hls.Events.ERROR, (_event, data) => {
+        if (!data.fatal || gen !== generationRef.current) return
 
         setState((prev) => {
           const nextRetry = prev.retryCount + 1
 
           if (nextRetry > PLAYER_RETRY_COUNT) {
-            // All retries exhausted on this candidate - try next URL
-            if (tryNextCandidate(videoEl)) {
-              return { ...prev, retryCount: 0, error: null }
-            }
-            return {
-              ...prev,
-              error: 'Stream unavailable after multiple retries',
-              retryCount: nextRetry,
-            }
+            // Exhausted retries on this candidate – try next URL
+            advanceCandidate(videoEl, startPosition, gen)
+            return { ...prev, retryCount: 0, error: null }
           }
 
+          // Exponential back-off retry on the same URL
           const delay = Math.pow(2, nextRetry - 1) * 1000
+          clearRetryTimer()
           retryTimerRef.current = setTimeout(() => {
+            if (gen !== generationRef.current) return
             if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-              hls.startLoad()
+              hlsInstance.startLoad()
             } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-              hls.recoverMediaError()
+              hlsInstance.recoverMediaError()
             } else {
-              hls.destroy()
-              const newHls = new Hls({
+              // Unrecoverable – rebuild
+              hlsInstance.destroy()
+              if (gen !== generationRef.current) return
+              const fresh = new Hls({
                 maxBufferLength: BUFFER_CONFIG.maxBufferLength,
                 maxMaxBufferLength: BUFFER_CONFIG.maxMaxBufferLength,
                 maxBufferSize: BUFFER_CONFIG.maxBufferSize,
               })
-              hlsRef.current = newHls
-              newHls.loadSource(url)
-              newHls.attachMedia(videoEl)
+              hlsRef.current = fresh
+              fresh.loadSource(url)
+              fresh.attachMedia(videoEl)
             }
           }, delay)
 
@@ -178,21 +205,70 @@ export function usePlayer() {
         })
       })
     },
-    [tryNextCandidate]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [destroyHls, clearRetryTimer]
   )
 
+  /* ------------------------------------------------------------------ */
+  /*  advanceCandidate – move to the next fallback URL                   */
+  /* ------------------------------------------------------------------ */
+
+  const advanceCandidate = useCallback(
+    (videoEl: HTMLVideoElement, startPosition: number, gen: number) => {
+      const idx = candidateIdxRef.current + 1
+      if (idx >= candidatesRef.current.length) {
+        // Nothing left to try
+        if (mountedRef.current) {
+          setState((s) => ({
+            ...s,
+            error:
+              'Playback failed. The stream may be offline, the format unsupported, or the server blocked the request.',
+          }))
+        }
+        return
+      }
+      candidateIdxRef.current = idx
+      loadUrl(videoEl, candidatesRef.current[idx], startPosition, gen)
+    },
+    [loadUrl]
+  )
+
+  /* ------------------------------------------------------------------ */
+  /*  Public API                                                         */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Initialise the player.  Must be called *after* the <video> element is
+   * in the DOM (i.e. inside a useEffect or a ref callback).
+   */
   const initPlayer = useCallback(
     (videoEl: HTMLVideoElement, streamUrl: string, startPosition?: number) => {
       destroyPlayer()
+
+      if (!videoEl) return
+      if (!isValidStreamUrl(streamUrl)) {
+        setState((s) => ({
+          ...s,
+          error: 'Invalid stream URL. Make sure it starts with http:// or https://.',
+        }))
+        return
+      }
+
       videoRef.current = videoEl
       startPosRef.current = startPosition || 0
 
-      // Build ordered list of URL candidates (HTTPS first, then HTTP, then proxy)
       candidatesRef.current = buildStreamUrlCandidates(streamUrl)
       candidateIdxRef.current = 0
 
+      const gen = generationRef.current
       const firstUrl = candidatesRef.current[0] || streamUrl
-      loadUrl(videoEl, firstUrl, startPosition)
+
+      // Use a microtask so the caller's render cycle completes first,
+      // guaranteeing the DOM is settled and preventing Blob ERR_FILE_NOT_FOUND.
+      requestAnimationFrame(() => {
+        if (gen !== generationRef.current) return
+        loadUrl(videoEl, firstUrl, startPosRef.current, gen)
+      })
     },
     [destroyPlayer, loadUrl]
   )
@@ -200,20 +276,17 @@ export function usePlayer() {
   const retry = useCallback(
     (streamUrl: string) => {
       if (videoRef.current) {
-        setState({
-          isReady: false,
-          isPlaying: false,
-          error: null,
-          retryCount: 0,
-        })
         initPlayer(videoRef.current, streamUrl)
       }
     },
     [initPlayer]
   )
 
+  // Cleanup on unmount
   useEffect(() => {
+    mountedRef.current = true
     return () => {
+      mountedRef.current = false
       destroyPlayer()
     }
   }, [destroyPlayer])
