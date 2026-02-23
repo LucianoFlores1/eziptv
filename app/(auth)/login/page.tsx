@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/use-auth'
 import { XtreamApiError } from '@/lib/xtream-api'
 import { toast } from 'sonner'
-import { Tv, Loader2, Eye, EyeOff } from 'lucide-react'
+import { Tv, Loader2, Eye, EyeOff, PlayCircle } from 'lucide-react'
 
 export default function LoginPage() {
   const [server, setServer] = useState('')
@@ -155,7 +155,22 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-8 text-center text-xs text-muted-foreground">
+        <div className="mt-6 flex items-center gap-3">
+          <div className="h-px flex-1 bg-border" />
+          <span className="text-xs text-muted-foreground">or</span>
+          <div className="h-px flex-1 bg-border" />
+        </div>
+
+        <button
+          type="button"
+          onClick={() => router.push('/player/demo')}
+          className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-border bg-secondary font-medium text-secondary-foreground transition-colors hover:bg-accent"
+        >
+          <PlayCircle className="h-4 w-4" />
+          Guest Demo (Test Player)
+        </button>
+
+        <p className="mt-6 text-center text-xs text-muted-foreground">
           Your credentials are encrypted and stored locally on your device.
         </p>
       </div>
