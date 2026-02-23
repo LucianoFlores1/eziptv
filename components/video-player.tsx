@@ -15,8 +15,11 @@ import {
   RefreshCw,
   ArrowLeft,
   ExternalLink,
+  Copy,
+  Check,
+  MonitorPlay,
 } from 'lucide-react'
-import { cn, isHlsUrl, isNativeVideoUrl, isValidStreamUrl } from '@/lib/utils'
+import { cn, isHlsUrl, isValidStreamUrl } from '@/lib/utils'
 
 interface VideoPlayerProps {
   streamUrl: string
@@ -52,9 +55,35 @@ export function VideoPlayer({
   const [duration, setDuration] = useState(0)
   const [seekValue, setSeekValue] = useState(0)
   const [isSeeking, setIsSeeking] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   const isLive = contentType === 'live'
+  const isHls = isHlsUrl(streamUrl)
   const isMkv = streamUrl.toLowerCase().includes('.mkv')
+
+  // The URL the user should copy / open externally
+  const externalUrl = activeUrl || streamUrl
+
+  // ----- Clipboard copy -----
+  const handleCopyUrl = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(externalUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Fallback for older browsers
+      const textarea = document.createElement('textarea')
+      textarea.value = externalUrl
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }, [externalUrl])
 
   // ----- Initialise the player once the <video> element is in the DOM -----
   useEffect(() => {
@@ -62,8 +91,6 @@ export function VideoPlayer({
     if (!videoEl) return
     if (!isValidStreamUrl(streamUrl)) return
 
-    // requestAnimationFrame inside initPlayer already defers HLS.js attach
-    // to after the current render, but we also guard here.
     initPlayer(videoEl, streamUrl, startPosition)
 
     return () => {
@@ -85,7 +112,6 @@ export function VideoPlayer({
 
     return () => {
       if (saveTimerRef.current) clearInterval(saveTimerRef.current)
-      // Save final position on teardown
       const video = videoElRef.current
       if (video) {
         savePosition(contentId, contentType, video.currentTime, video.duration || 0)
@@ -175,10 +201,66 @@ export function VideoPlayer({
     return `${m}:${s.toString().padStart(2, '0')}`
   }
 
-  // ----- Error state -----
+  // =====================================================================
+  // External player action bar (shown in error state AND in the controls)
+  // =====================================================================
+  const ExternalActions = ({ className }: { className?: string }) => (
+    <div className={cn('flex flex-wrap items-center justify-center gap-2', className)}>
+      {/* VLC protocol link (works on desktop & Android with VLC installed) */}
+      <a
+        href={`vlc://${externalUrl}`}
+        className="flex h-10 items-center gap-2 rounded-lg bg-[#ff8800] px-4 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <ExternalLink className="h-4 w-4" />
+        Open in VLC
+      </a>
+
+      {/* Android intent:// for VLC */}
+      <a
+        href={`intent://${externalUrl.replace(/^https?:\/\//, '')}#Intent;scheme=https;package=org.videolan.vlc;end`}
+        className="flex h-10 items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <MonitorPlay className="h-4 w-4" />
+        Android VLC
+      </a>
+
+      {/* Copy Stream URL */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          handleCopyUrl()
+        }}
+        className="flex h-10 items-center gap-2 rounded-lg bg-secondary px-4 text-sm font-medium text-secondary-foreground transition-colors hover:bg-accent"
+      >
+        {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+        {copied ? 'Copied!' : 'Copy Stream URL'}
+      </button>
+
+      {/* Direct download for non-HLS VOD */}
+      {!isHls && contentType === 'vod' && (
+        <a
+          href={externalUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          download
+          className="flex h-10 items-center gap-2 rounded-lg border border-border bg-secondary px-4 text-sm font-medium text-secondary-foreground transition-colors hover:bg-accent"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <ArrowLeft className="h-4 w-4 rotate-[-90deg]" />
+          Download
+        </a>
+      )}
+    </div>
+  )
+
+  // =====================================================================
+  // Error state
+  // =====================================================================
   if (error) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 bg-background p-6">
+      <div className="flex h-full flex-col items-center justify-center gap-5 bg-background p-6">
         <AlertTriangle className="h-12 w-12 text-destructive" />
         <p className="text-sm font-medium text-foreground text-center max-w-sm">
           {error}
@@ -186,31 +268,22 @@ export function VideoPlayer({
 
         {isMkv && (
           <p className="text-xs text-muted-foreground text-center max-w-xs">
-            This stream uses MKV format which has limited browser support. Try
-            Chromium-based browsers (Chrome, Edge, Brave) or open in VLC below.
+            MKV format has limited browser support. Use VLC or PotPlayer for
+            reliable playback, or try a Chromium-based browser.
           </p>
         )}
 
-        <div className="flex flex-wrap items-center justify-center gap-3">
+        {/* Prominent external player buttons */}
+        <ExternalActions />
+
+        <div className="flex gap-3">
           <button
             onClick={() => retry(streamUrl)}
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
           >
             <RefreshCw className="h-4 w-4" />
-            Retry
+            Retry in Browser
           </button>
-
-          {/* VLC / external player fallback for MKV or failed native playback */}
-          {(isMkv || (contentType === 'vod' && !isHlsUrl(streamUrl))) && activeUrl && (
-            <a
-              href={`vlc://${activeUrl}`}
-              className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground"
-            >
-              <ExternalLink className="h-4 w-4" />
-              Open in VLC
-            </a>
-          )}
-
           <button
             onClick={onBack}
             className="flex items-center gap-2 rounded-lg bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground"
@@ -218,24 +291,13 @@ export function VideoPlayer({
             Go Back
           </button>
         </div>
-
-        {/* Direct download link as last resort */}
-        {(isMkv || (contentType === 'vod' && !isHlsUrl(streamUrl))) && activeUrl && (
-          <a
-            href={activeUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            download
-            className="text-xs text-muted-foreground underline hover:text-foreground transition-colors"
-          >
-            Download file directly
-          </a>
-        )}
       </div>
     )
   }
 
-  // ----- URL validation error -----
+  // =====================================================================
+  // Invalid URL
+  // =====================================================================
   if (!isValidStreamUrl(streamUrl)) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 bg-background p-6">
@@ -253,6 +315,9 @@ export function VideoPlayer({
     )
   }
 
+  // =====================================================================
+  // Player
+  // =====================================================================
   return (
     <div
       ref={containerRef}
@@ -297,8 +362,38 @@ export function VideoPlayer({
             <ArrowLeft className="h-4 w-4" />
           </button>
           {title && (
-            <p className="text-sm font-medium text-white truncate">{title}</p>
+            <p className="text-sm font-medium text-white truncate flex-1">
+              {title}
+            </p>
           )}
+
+          {/* Top-right action buttons */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                handleCopyUrl()
+              }}
+              className="flex h-8 items-center gap-1.5 rounded-full bg-white/10 px-3 text-xs text-white hover:bg-white/20 transition-colors"
+              title="Copy stream URL"
+            >
+              {copied ? (
+                <Check className="h-3.5 w-3.5 text-green-400" />
+              ) : (
+                <Copy className="h-3.5 w-3.5" />
+              )}
+              <span className="hidden sm:inline">{copied ? 'Copied' : 'Copy URL'}</span>
+            </button>
+            <a
+              href={`vlc://${externalUrl}`}
+              onClick={(e) => e.stopPropagation()}
+              className="flex h-8 items-center gap-1.5 rounded-full bg-[#ff8800]/80 px-3 text-xs font-medium text-white hover:bg-[#ff8800] transition-colors"
+              title="Open in VLC"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">VLC</span>
+            </a>
+          </div>
         </div>
 
         {/* Center play button */}
@@ -356,7 +451,11 @@ export function VideoPlayer({
               className="text-white hover:text-primary transition-colors"
               aria-label={isPlaying ? 'Pause' : 'Play'}
             >
-              {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+              {isPlaying ? (
+                <Pause className="h-5 w-5" />
+              ) : (
+                <Play className="h-5 w-5" />
+              )}
             </button>
 
             <button
@@ -364,21 +463,14 @@ export function VideoPlayer({
               className="text-white hover:text-primary transition-colors"
               aria-label={isMuted ? 'Unmute' : 'Mute'}
             >
-              {isMuted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+              {isMuted ? (
+                <VolumeX className="h-5 w-5" />
+              ) : (
+                <Volume2 className="h-5 w-5" />
+              )}
             </button>
 
             <div className="flex-1" />
-
-            {/* VLC button for MKV while playing (non-error state) */}
-            {isMkv && activeUrl && (
-              <a
-                href={`vlc://${activeUrl}`}
-                onClick={(e) => e.stopPropagation()}
-                className="text-xs text-white/70 hover:text-white transition-colors underline"
-              >
-                VLC
-              </a>
-            )}
 
             <button
               onClick={toggleFullscreen}

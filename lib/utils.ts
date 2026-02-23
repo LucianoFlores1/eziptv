@@ -56,46 +56,57 @@ export function upgradeToHttps(url: string): string {
 }
 
 /**
- * Wrap a stream URL with a CORS proxy when direct access fails on
- * HTTPS origins talking to HTTP-only servers.
- *
- * Only applied at runtime when the page is served over HTTPS and the
- * target URL is HTTP (mixed-content scenario).
+ * Wrap a stream URL with the corsproxy.io CORS proxy.
  */
 export function corsProxyUrl(url: string): string {
-  // Only proxy HTTP URLs when we're on an HTTPS page
-  if (
-    typeof window !== 'undefined' &&
-    window.location.protocol === 'https:' &&
-    url.startsWith('http://')
-  ) {
-    return `https://corsproxy.io/?${encodeURIComponent(url)}`
+  return `https://corsproxy.io/?${encodeURIComponent(url)}`
+}
+
+/**
+ * Check whether the user has enabled the CORS Proxy toggle.
+ */
+export function isCorsProxyEnabled(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    return localStorage.getItem('ott_cors_proxy_enabled') === 'true'
+  } catch {
+    return false
   }
-  return url
 }
 
 /**
  * Build an ordered list of URLs to try for a given stream.
  *
- * 1. HTTPS upgrade (browser CSP will also try this via upgrade-insecure-requests)
- * 2. Original URL (works when page is on HTTP or the server supports mixed)
- * 3. CORS-proxied original URL (last resort for mixed-content)
+ * When the CORS Proxy toggle is ON the proxied URL is tried *first*
+ * (this lets users bypass mixed-content blocks immediately).
+ *
+ * Otherwise the order is:
+ * 1. HTTPS upgrade
+ * 2. Original HTTP URL (only added when different from HTTPS)
+ * 3. CORS-proxied URL as last resort (only on HTTPS pages with HTTP streams)
  */
 export function buildStreamUrlCandidates(rawUrl: string): string[] {
   const candidates: string[] = []
   const httpsUrl = upgradeToHttps(rawUrl)
+  const proxyEnabled = isCorsProxyEnabled()
 
-  // Always try HTTPS first
-  candidates.push(httpsUrl)
-
-  // If the original was HTTP, add it as a fallback
-  if (httpsUrl !== rawUrl) {
-    candidates.push(rawUrl)
-  }
-
-  // Last resort: CORS proxy on the original HTTP URL
-  if (rawUrl.startsWith('http://') && typeof window !== 'undefined' && window.location.protocol === 'https:') {
+  if (proxyEnabled) {
+    // User opted in -- proxy first, then direct HTTPS, then original HTTP
     candidates.push(corsProxyUrl(rawUrl))
+    candidates.push(httpsUrl)
+    if (httpsUrl !== rawUrl) candidates.push(rawUrl)
+  } else {
+    // Default order: HTTPS > HTTP > proxied HTTP (last resort)
+    candidates.push(httpsUrl)
+    if (httpsUrl !== rawUrl) candidates.push(rawUrl)
+
+    if (
+      rawUrl.startsWith('http://') &&
+      typeof window !== 'undefined' &&
+      window.location.protocol === 'https:'
+    ) {
+      candidates.push(corsProxyUrl(rawUrl))
+    }
   }
 
   return candidates
