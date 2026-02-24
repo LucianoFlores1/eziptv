@@ -1,7 +1,7 @@
 {
-  "name": "OTT Player",
-  "short_name": "OTT Player",
-  "description": "IPTV Progressive Web App",
+  "name": "EzIPTV",
+  "short_name": "EzIPTV",
+  "description": "Free, open-source IPTV player built as a Progressive Web App",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0a0a",

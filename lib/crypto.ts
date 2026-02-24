@@ -1,4 +1,4 @@
-const SALT = 'ott-player-v1-salt-2024'
+const SALT = 'eziptv-v1-salt-2024'
 
 function getFingerprint(): string {
   if (typeof navigator !== 'undefined') {

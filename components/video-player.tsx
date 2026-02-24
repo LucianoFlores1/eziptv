@@ -363,13 +363,13 @@ export function VideoPlayer({
             Open in New Tab
           </a>
 
-          {/* VLC */}
+          {/* Launch External Player (VLC) */}
           <a
             href={`vlc://${externalUrl}`}
             className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#ff8800] font-medium text-white transition-opacity hover:opacity-90"
           >
             <ExternalLink className="h-4 w-4" />
-            Open in VLC
+            Launch External Player (VLC)
           </a>
 
           {/* Android intent */}
@@ -378,7 +378,7 @@ export function VideoPlayer({
             className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-accent font-medium text-accent-foreground transition-opacity hover:opacity-90"
           >
             <MonitorPlay className="h-4 w-4" />
-            Android VLC Intent
+            Launch on Android (VLC Intent)
           </a>
         </div>
 

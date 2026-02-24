@@ -98,7 +98,7 @@ export interface SyncMeta {
   updatedAt: number
 }
 
-class OTTDatabase extends Dexie {
+class EzIPTVDatabase extends Dexie {
   categories!: EntityTable<Category, 'id'>
   channels!: EntityTable<Channel, 'streamId'>
   movies!: EntityTable<Movie, 'streamId'>
@@ -109,7 +109,7 @@ class OTTDatabase extends Dexie {
   syncMeta!: EntityTable<SyncMeta, 'key'>
 
   constructor() {
-    super('ott-player-db')
+    super('eziptv-db')
 
     this.version(1).stores({
       categories: 'id, type, [type+name]',
@@ -135,4 +135,4 @@ class OTTDatabase extends Dexie {
   }
 }
 
-export const db = new OTTDatabase()
+export const db = new EzIPTVDatabase()

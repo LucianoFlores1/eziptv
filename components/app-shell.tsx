@@ -45,7 +45,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Tv className="h-4 w-4 text-primary-foreground" />
           </div>
           <span className="text-lg font-semibold text-sidebar-foreground">
-            OTT Player
+            EzIPTV
           </span>
         </div>
 

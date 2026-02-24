@@ -7,13 +7,14 @@ import './globals.css'
 const _inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'OTT Player',
-  description: 'IPTV Progressive Web App',
+  title: 'EzIPTV',
+  description:
+    'Free, open-source IPTV player built as a Progressive Web App. Browse Live TV, Movies and Series from your Xtream-compatible provider.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'OTT Player',
+    title: 'EzIPTV',
   },
 }
 

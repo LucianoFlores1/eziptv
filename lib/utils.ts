@@ -68,7 +68,7 @@ export function corsProxyUrl(url: string): string {
 export function isCorsProxyEnabled(): boolean {
   if (typeof window === 'undefined') return false
   try {
-    return localStorage.getItem('ott_cors_proxy_enabled') === 'true'
+    return localStorage.getItem('eziptv_cors_proxy_enabled') === 'true'
   } catch {
     return false
   }
