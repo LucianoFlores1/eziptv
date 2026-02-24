@@ -21,7 +21,7 @@ import {
   Film,
   ExternalLink,
 } from 'lucide-react'
-import { cn, upgradeToHttps } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 
 interface VodDetail {
   name: string
@@ -93,13 +93,11 @@ export default function MovieDetailPage({
   const ext = movie?.containerExtension || 'mp4'
   const isMkv = ext.toLowerCase() === 'mkv'
 
-  // Build a direct stream URL for the VLC / download fallback button
-  const directStreamUrl =
-    credentials
-      ? upgradeToHttps(
-          `${credentials.server}/movie/${credentials.username}/${credentials.password}/${vodIdNum}.${ext}`
-        )
-      : null
+  // Build a direct stream URL through the API helper so normalizeServer
+  // and upgradeToHttps are applied consistently (no malformed protocols).
+  const directStreamUrl = credentials
+    ? xtreamApi.getStreamUrl(credentials, vodIdNum, 'vod', ext)
+    : null
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60)
@@ -204,27 +202,26 @@ export default function MovieDetailPage({
             />
           </button>
 
-          {/* VLC / Download fallback for MKV files */}
+          {/* External playback options for MKV / non-HLS files */}
           {isMkv && directStreamUrl && (
             <>
-              <a
-                href={`vlc://${directStreamUrl}`}
-                className="flex h-11 items-center gap-2 rounded-lg border border-border bg-secondary px-3 text-sm font-medium text-secondary-foreground hover:bg-accent transition-colors"
-                title="Open in VLC Player"
-              >
-                <ExternalLink className="h-4 w-4" />
-                <span className="hidden sm:inline">VLC</span>
-              </a>
               <a
                 href={directStreamUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                download
                 className="flex h-11 items-center gap-2 rounded-lg border border-border bg-secondary px-3 text-sm font-medium text-secondary-foreground hover:bg-accent transition-colors"
-                title="Download file"
+                title="Open in new browser tab"
               >
-                <ArrowLeft className="h-4 w-4 rotate-[-90deg]" />
-                <span className="hidden sm:inline">Download</span>
+                <ExternalLink className="h-4 w-4" />
+                <span className="hidden sm:inline">New Tab</span>
+              </a>
+              <a
+                href={`vlc://${directStreamUrl}`}
+                className="flex h-11 items-center gap-2 rounded-lg border border-[#ff8800]/40 bg-[#ff8800]/10 px-3 text-sm font-medium text-[#ff8800] hover:bg-[#ff8800]/20 transition-colors"
+                title="Open in VLC Player"
+              >
+                <ExternalLink className="h-4 w-4" />
+                <span className="hidden sm:inline">VLC</span>
               </a>
             </>
           )}
