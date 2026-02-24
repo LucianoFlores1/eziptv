@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ott-player-v1'
+const CACHE_NAME = 'eziptv-v1'
 const STATIC_ASSETS = ['/', '/login', '/dashboard']
 
 self.addEventListener('install', (event) => {

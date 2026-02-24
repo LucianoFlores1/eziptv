@@ -17,7 +17,10 @@ import {
   LogOut,
   ChevronRight,
   Play,
+  Shield,
 } from 'lucide-react'
+import { CORS_PROXY_STORAGE_KEY } from '@/lib/constants'
+import { cn } from '@/lib/utils'
 import { ImageWithFallback } from '@/components/image-with-fallback'
 
 export default function DashboardPage() {
@@ -26,6 +29,23 @@ export default function DashboardPage() {
   const recentlyWatched = useRecentlyWatched(10)
   const router = useRouter()
   const [hasInitialSync, setHasInitialSync] = useState(false)
+  const [corsProxyEnabled, setCorsProxyEnabled] = useState(false)
+
+  // Load the CORS proxy toggle from localStorage on mount
+  useEffect(() => {
+    try {
+      setCorsProxyEnabled(localStorage.getItem(CORS_PROXY_STORAGE_KEY) === 'true')
+    } catch {}
+  }, [])
+
+  const toggleCorsProxy = () => {
+    const next = !corsProxyEnabled
+    setCorsProxyEnabled(next)
+    try {
+      localStorage.setItem(CORS_PROXY_STORAGE_KEY, String(next))
+    } catch {}
+    toast.success(next ? 'CORS Proxy enabled - streams will be proxied' : 'CORS Proxy disabled - direct connections')
+  }
 
   const channelCount = useLiveQuery(() => db.channels.count()) ?? 0
   const movieCount = useLiveQuery(() => db.movies.count()) ?? 0
@@ -253,6 +273,51 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      {/* Settings */}
+      <div className="mb-6">
+        <h2 className="text-lg font-semibold text-foreground mb-3">
+          Settings
+        </h2>
+        <div className="rounded-xl bg-card border border-border divide-y divide-border">
+          {/* CORS Proxy Toggle */}
+          <div className="flex items-center justify-between gap-4 p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                <Shield className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  Use CORS Proxy
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                  Routes all stream URLs through corsproxy.io to bypass
+                  Mixed Content (HTTP/HTTPS) blocks. Enable this if streams
+                  fail to load in the browser.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={corsProxyEnabled}
+              onClick={toggleCorsProxy}
+              className={cn(
+                'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
+                corsProxyEnabled ? 'bg-primary' : 'bg-muted'
+              )}
+            >
+              <span className="sr-only">Toggle CORS proxy</span>
+              <span
+                className={cn(
+                  'pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform',
+                  corsProxyEnabled ? 'translate-x-5' : 'translate-x-0'
+                )}
+              />
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* Actions */}
       <div className="flex flex-col gap-3 sm:flex-row">

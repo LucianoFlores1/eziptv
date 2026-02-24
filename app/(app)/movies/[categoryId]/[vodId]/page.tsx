@@ -19,6 +19,7 @@ import {
   Calendar,
   User,
   Film,
+  ExternalLink,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -90,6 +91,13 @@ export default function MovieDetailPage({
   const releaseDate = detail?.releaseDate || movie?.releaseDate || ''
   const dur = detail?.duration || movie?.duration || ''
   const ext = movie?.containerExtension || 'mp4'
+  const isMkv = ext.toLowerCase() === 'mkv'
+
+  // Build a direct stream URL through the API helper so normalizeServer
+  // and upgradeToHttps are applied consistently (no malformed protocols).
+  const directStreamUrl = credentials
+    ? xtreamApi.getStreamUrl(credentials, vodIdNum, 'vod', ext)
+    : null
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60)
@@ -193,6 +201,30 @@ export default function MovieDetailPage({
               )}
             />
           </button>
+
+          {/* External playback options for MKV / non-HLS files */}
+          {isMkv && directStreamUrl && (
+            <>
+              <a
+                href={directStreamUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex h-11 items-center gap-2 rounded-lg border border-border bg-secondary px-3 text-sm font-medium text-secondary-foreground hover:bg-accent transition-colors"
+                title="Open in new browser tab"
+              >
+                <ExternalLink className="h-4 w-4" />
+                <span className="hidden sm:inline">New Tab</span>
+              </a>
+              <a
+                href={`vlc://${directStreamUrl}`}
+                className="flex h-11 items-center gap-2 rounded-lg border border-[#ff8800]/40 bg-[#ff8800]/10 px-3 text-sm font-medium text-[#ff8800] hover:bg-[#ff8800]/20 transition-colors"
+                title="Open in VLC Player"
+              >
+                <ExternalLink className="h-4 w-4" />
+                <span className="hidden sm:inline">VLC</span>
+              </a>
+            </>
+          )}
         </div>
 
         {/* Watch progress */}
