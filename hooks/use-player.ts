@@ -25,6 +25,7 @@ export function usePlayer() {
   const hlsRef = useRef<Hls | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const rafRef = useRef<number | null>(null)
   const mountedRef = useRef(true)
 
   // These refs avoid stale closures in event handlers
@@ -48,20 +49,24 @@ export function usePlayer() {
   /*  Cleanup helpers                                                    */
   /* ------------------------------------------------------------------ */
 
-  const clearRetryTimer = useCallback(() => {
+  const clearTimers = useCallback(() => {
     if (retryTimerRef.current) {
       clearTimeout(retryTimerRef.current)
       retryTimerRef.current = null
     }
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
   }, [])
 
   const destroyHls = useCallback(() => {
-    clearRetryTimer()
+    clearTimers()
     if (hlsRef.current) {
       hlsRef.current.destroy()
       hlsRef.current = null
     }
-  }, [clearRetryTimer])
+  }, [clearTimers])
 
   /**
    * Full teardown – stops everything, resets the <video> element, and
@@ -179,7 +184,7 @@ export function usePlayer() {
 
           // Exponential back-off retry on the same URL
           const delay = Math.pow(2, nextRetry - 1) * 1000
-          clearRetryTimer()
+          clearTimers()
           retryTimerRef.current = setTimeout(() => {
             if (gen !== generationRef.current) return
             if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
@@ -206,7 +211,7 @@ export function usePlayer() {
       })
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [destroyHls, clearRetryTimer]
+    [destroyHls, clearTimers]
   )
 
   /* ------------------------------------------------------------------ */
@@ -265,7 +270,8 @@ export function usePlayer() {
 
       // Use a microtask so the caller's render cycle completes first,
       // guaranteeing the DOM is settled and preventing Blob ERR_FILE_NOT_FOUND.
-      requestAnimationFrame(() => {
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null
         if (gen !== generationRef.current) return
         loadUrl(videoEl, firstUrl, startPosRef.current, gen)
       })

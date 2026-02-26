@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { VideoPlayer } from '@/components/video-player'
 
 const DEMO_STREAM_URL =
-  'https://ntv-unm-live.akamaized.net/hls/live/708105/NASA-NTV1-Public/master.m3u8'
+  'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4'
 
 export default function DemoPlayerPage() {
   const router = useRouter()
@@ -14,9 +14,9 @@ export default function DemoPlayerPage() {
       <VideoPlayer
         streamUrl={DEMO_STREAM_URL}
         contentId={0}
-        contentType="live"
+        contentType="vod"
         onBack={() => router.push('/login')}
-        title="NASA TV (Demo - Public HLS Stream)"
+        title="Demo Video (Google Sample)"
       />
     </div>
   )
