@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
 import { Film } from 'lucide-react'
 
@@ -12,6 +12,23 @@ interface ImageWithFallbackProps {
   enableCorsProxy?: boolean
 }
 
+// Domains that commonly have CORS issues with images
+const CORS_PROBLEM_DOMAINS = [
+  'image.tmdb.org',
+  'themoviedb.org',
+  'thetvdb.com',
+  'fanart.tv',
+]
+
+function shouldUseCorsProxy(url: string): boolean {
+  try {
+    const urlObj = new URL(url)
+    return CORS_PROBLEM_DOMAINS.some((domain) => urlObj.hostname.includes(domain))
+  } catch {
+    return false
+  }
+}
+
 export function ImageWithFallback({
   src,
   alt,
@@ -21,23 +38,51 @@ export function ImageWithFallback({
 }: ImageWithFallbackProps) {
   const [error, setError] = useState(false)
   const [loaded, setLoaded] = useState(false)
-  const [currentSrc, setCurrentSrc] = useState(src)
+  const [currentSrc, setCurrentSrc] = useState<string | undefined>(() => {
+    // Pre-emptively use CORS proxy for known problematic domains
+    if (src && enableCorsProxy && shouldUseCorsProxy(src)) {
+      return `/api/cors-proxy?url=${encodeURIComponent(src)}`
+    }
+    return src
+  })
   const [corsRetried, setCorsRetried] = useState(false)
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Update currentSrc when src prop changes
   useEffect(() => {
-    setCurrentSrc(src)
+    // Clear any pending retry
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current)
+      retryTimeoutRef.current = null
+    }
+    
+    // Pre-emptively use CORS proxy for known problematic domains
+    if (src && enableCorsProxy && shouldUseCorsProxy(src)) {
+      setCurrentSrc(`/api/cors-proxy?url=${encodeURIComponent(src)}`)
+      setCorsRetried(true) // Mark as already proxied
+    } else {
+      setCurrentSrc(src)
+      setCorsRetried(false)
+    }
     setError(false)
     setLoaded(false)
-    setCorsRetried(false)
-  }, [src])
+    
+    return () => {
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current)
+      }
+    }
+  }, [src, enableCorsProxy])
 
   const handleError = () => {
     // If CORS proxy is enabled and we haven't tried it yet, retry through proxy
     if (enableCorsProxy && !corsRetried && currentSrc && currentSrc.startsWith('http')) {
       setCorsRetried(true)
-      const corsProxyUrl = `/api/cors-proxy?url=${encodeURIComponent(currentSrc)}`
-      setCurrentSrc(corsProxyUrl)
+      // Small delay to prevent rapid retries
+      retryTimeoutRef.current = setTimeout(() => {
+        const corsProxyUrl = `/api/cors-proxy?url=${encodeURIComponent(currentSrc)}`
+        setCurrentSrc(corsProxyUrl)
+      }, 50)
     } else {
       setError(true)
     }
@@ -72,6 +117,7 @@ export function ImageWithFallback({
         src={currentSrc}
         alt={alt}
         loading="lazy"
+        referrerPolicy="no-referrer"
         onError={handleError}
         onLoad={() => setLoaded(true)}
         className={cn(

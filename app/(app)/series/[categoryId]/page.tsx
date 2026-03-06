@@ -73,7 +73,7 @@ export default function SeriesGridPage({
           </p>
         </div>
       ) : (
-        <ContentGrid items={gridItems} sentinelRef={sentinelRef} />
+        <ContentGrid items={gridItems} sentinelRef={sentinelRef} isLoadingMore={isLoadingMore} />
       )}
     </div>
   )

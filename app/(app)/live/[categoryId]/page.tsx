@@ -1,6 +1,6 @@
 'use client'
 
-import { use } from 'react'
+import { use, useCallback, useRef, useEffect } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/lib/db'
 import { Virtuoso } from 'react-virtuoso'
@@ -10,7 +10,6 @@ import { ChannelRow } from '@/components/channel-row'
 import { LoadingSpinner } from '@/components/loading-spinner'
 import { ArrowLeft, Tv } from 'lucide-react'
 import Link from 'next/link'
-import { useRef } from 'react'
 
 export default function LiveChannelsPage({
   params,
@@ -19,18 +18,39 @@ export default function LiveChannelsPage({
 }) {
   const { categoryId } = use(params)
   const { credentials } = useAuth()
-  const sentinelRef = useRef<HTMLDivElement>(null)
+  const localSentinelRef = useRef<HTMLDivElement | null>(null)
 
   const category = useLiveQuery(
     () => db.categories.get(categoryId),
     [categoryId]
   )
 
-  const { items: channels, isLoading, isLoadingMore, error } = usePaginatedContent({
+  const { items: channels, isLoading, isLoadingMore, error, sentinelRef } = usePaginatedContent({
     credentials,
     categoryId,
     contentType: 'live',
   })
+
+  // Sync local ref with hook's sentinel ref
+  const setSentinelRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      localSentinelRef.current = node
+      if (sentinelRef) {
+        sentinelRef.current = node
+      }
+    },
+    [sentinelRef]
+  )
+
+  // Re-trigger observer when items change
+  useEffect(() => {
+    if (localSentinelRef.current) {
+      localSentinelRef.current.style.opacity = '0'
+      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+      localSentinelRef.current.offsetHeight
+      localSentinelRef.current.style.opacity = ''
+    }
+  }, [channels.length])
 
   if (isLoading) {
     return <LoadingSpinner label="Loading channels..." />
@@ -87,7 +107,15 @@ export default function LiveChannelsPage({
             }}
           />
           {/* Sentinel for infinite scroll detection */}
-          <div ref={sentinelRef} className="h-1 w-full" aria-hidden="true" />
+          <div 
+            ref={setSentinelRef} 
+            className="h-20 w-full flex items-center justify-center" 
+            aria-hidden="true"
+          >
+            {isLoadingMore && (
+              <div className="text-sm text-muted-foreground">Loading more...</div>
+            )}
+          </div>
         </>
       )}
     </div>
