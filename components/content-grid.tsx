@@ -16,6 +16,7 @@ interface GridItem {
 
 interface ContentGridProps {
   items: GridItem[]
+  sentinelRef?: React.RefObject<HTMLDivElement>
 }
 
 const gridComponents = {
@@ -38,26 +39,32 @@ const gridComponents = {
   ),
 }
 
-export function ContentGrid({ items }: ContentGridProps) {
+export function ContentGrid({ items, sentinelRef }: ContentGridProps) {
   return (
-    <VirtuosoGrid
-      totalCount={items.length}
-      useWindowScroll
-      components={gridComponents}
-      itemContent={(index) => {
-        const item = items[index]
-        if (!item) return null
-        return (
-          <ContentCard
-            href={item.href}
-            title={item.title}
-            poster={item.poster}
-            rating={item.rating}
-            watchProgress={item.watchProgress}
-            completed={item.completed}
-          />
-        )
-      }}
-    />
+    <>
+      <VirtuosoGrid
+        totalCount={items.length}
+        useWindowScroll
+        components={gridComponents}
+        itemContent={(index) => {
+          const item = items[index]
+          if (!item) return null
+          return (
+            <ContentCard
+              href={item.href}
+              title={item.title}
+              poster={item.poster}
+              rating={item.rating}
+              watchProgress={item.watchProgress}
+              completed={item.completed}
+            />
+          )
+        }}
+      />
+      {/* Sentinel for infinite scroll detection */}
+      {sentinelRef && (
+        <div ref={sentinelRef} className="h-1 w-full" aria-hidden="true" />
+      )}
+    </>
   )
 }

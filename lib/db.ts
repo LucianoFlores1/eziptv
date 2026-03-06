@@ -128,7 +128,18 @@ class EzIPTVDatabase extends Dexie {
       movies: 'streamId, categoryId, name, rating, [categoryId+name]',
       series: 'seriesId, categoryId, name, [categoryId+name]',
       seriesInfo: 'seriesId',
-      favorites: '++id, [contentId+contentType], contentType',
+      favorites: '++id, [contentId+contentType], contentType, addedAt',
+      playbackState: '++id, [contentId+contentType], contentType, watchedAt',
+      syncMeta: 'key',
+    })
+
+    this.version(3).stores({
+      categories: 'id, type, [type+name]',
+      channels: 'streamId, categoryId, name, [categoryId+name]',
+      movies: 'streamId, categoryId, name, rating, [categoryId+name]',
+      series: 'seriesId, categoryId, name, [categoryId+name]',
+      seriesInfo: 'seriesId',
+      favorites: '++id, [contentId+contentType], contentType, addedAt',
       playbackState: '++id, [contentId+contentType], contentType, watchedAt',
       syncMeta: 'key',
     })
