@@ -4,7 +4,7 @@ import { use } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/lib/db'
 import { usePaginatedContent } from '@/hooks/use-paginated-content'
-import { useCredentials } from '@/hooks/use-credentials'
+import { useAuth } from '@/hooks/use-auth'
 import { ContentGrid } from '@/components/content-grid'
 import { LoadingSpinner } from '@/components/loading-spinner'
 import { ArrowLeft, Film } from 'lucide-react'
@@ -16,7 +16,7 @@ export default function MoviesGridPage({
   params: Promise<{ categoryId: string }>
 }) {
   const { categoryId } = use(params)
-  const credentials = useCredentials()
+  const { credentials } = useAuth()
 
   const category = useLiveQuery(
     () => db.categories.get(categoryId),

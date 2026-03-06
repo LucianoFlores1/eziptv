@@ -672,5 +672,8 @@ export function usePlayer() {
     retry,
     hlsRef,
     videoRef,
+    selectAudioTrack,
+    selectSubtitleTrack,
+    disableSubtitles,
   }
 }

@@ -5,7 +5,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/lib/db'
 import { Virtuoso } from 'react-virtuoso'
 import { usePaginatedContent } from '@/hooks/use-paginated-content'
-import { useCredentials } from '@/hooks/use-credentials'
+import { useAuth } from '@/hooks/use-auth'
 import { ChannelRow } from '@/components/channel-row'
 import { LoadingSpinner } from '@/components/loading-spinner'
 import { ArrowLeft, Tv } from 'lucide-react'
@@ -18,7 +18,7 @@ export default function LiveChannelsPage({
   params: Promise<{ categoryId: string }>
 }) {
   const { categoryId } = use(params)
-  const credentials = useCredentials()
+  const { credentials } = useAuth()
   const sentinelRef = useRef<HTMLDivElement>(null)
 
   const category = useLiveQuery(
