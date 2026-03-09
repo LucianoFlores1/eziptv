@@ -20,6 +20,9 @@ import {
   Globe,
   MonitorPlay,
   Download,
+  Volume,
+  Subtitles,
+  ChevronDown,
 } from 'lucide-react'
 import { cn, isHlsUrl, isValidStreamUrl } from '@/lib/utils'
 
@@ -45,7 +48,7 @@ export function VideoPlayer({
   const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const { isReady, error, initPlayer, destroyPlayer, retry, mode, activeUrl } =
+  const { isReady, error, initPlayer, destroyPlayer, retry, mode, activeUrl, audioTracks, currentAudioTrack, subtitleTracks, currentSubtitleTrack, selectAudioTrack, selectSubtitleTrack, disableSubtitles } =
     usePlayer()
   const { savePosition } = usePlayback()
 
@@ -58,13 +61,27 @@ export function VideoPlayer({
   const [seekValue, setSeekValue] = useState(0)
   const [isSeeking, setIsSeeking] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [showAudioMenu, setShowAudioMenu] = useState(false)
+  const [showSubtitleMenu, setShowSubtitleMenu] = useState(false)
 
   // MKV gate: for non-HLS VOD, show a choice screen first instead of
-  // trying the internal player automatically.
+  // trying the internal player automatically. However, bypass this gate
+  // if the app is running in PWA/standalone mode to provide better UX.
   const isHls = isHlsUrl(streamUrl)
   const isMkv = streamUrl.toLowerCase().includes('.mkv')
   const isNonHlsVod = !isHls && (contentType === 'vod' || contentType === 'series')
-  const [bypassGate, setBypassGate] = useState(false)
+  
+  // Check if running in PWA mode (standalone/fullscreen)
+  const isPwaMode = 
+    typeof window !== 'undefined' && (
+      window.matchMedia('(display-mode: standalone)').matches ||
+      window.matchMedia('(display-mode: fullscreen)').matches ||
+      // @ts-ignore - custom property set by some PWA manifests
+      (window.navigator as any).standalone === true
+    )
+  
+  // Auto-bypass gate in PWA mode for better internal player UX
+  const [bypassGate, setBypassGate] = useState(isPwaMode && isNonHlsVod)
 
   const isLive = contentType === 'live'
 
@@ -612,6 +629,100 @@ export function VideoPlayer({
                 <Volume2 className="h-5 w-5" />
               )}
             </button>
+
+            {/* Audio tracks button */}
+            {audioTracks.length > 0 && (
+              <div className="relative">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setShowAudioMenu(!showAudioMenu)
+                    setShowSubtitleMenu(false)
+                  }}
+                  className="flex items-center gap-1 text-white hover:text-primary transition-colors"
+                  aria-label="Select audio track"
+                >
+                  <Volume className="h-5 w-5" />
+                  <ChevronDown className="h-3 w-3" />
+                </button>
+                {showAudioMenu && (
+                  <div className="absolute bottom-full mb-2 right-0 bg-black/90 border border-white/20 rounded-lg shadow-lg z-50 min-w-max">
+                    {audioTracks.map((track) => (
+                      <button
+                        key={track.id}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          selectAudioTrack(track.id)
+                          setShowAudioMenu(false)
+                        }}
+                        className={cn(
+                          'block w-full px-4 py-2 text-sm text-left hover:bg-white/10 transition-colors',
+                          currentAudioTrack === track.id && 'bg-primary/20 text-primary'
+                        )}
+                      >
+                        {track.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Subtitles button */}
+            {subtitleTracks.length > 0 && (
+              <div className="relative">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setShowSubtitleMenu(!showSubtitleMenu)
+                    setShowAudioMenu(false)
+                  }}
+                  className={cn(
+                    'flex items-center gap-1 transition-colors',
+                    currentSubtitleTrack !== null
+                      ? 'text-primary'
+                      : 'text-white hover:text-primary'
+                  )}
+                  aria-label="Select subtitle track"
+                >
+                  <Subtitles className="h-5 w-5" />
+                  <ChevronDown className="h-3 w-3" />
+                </button>
+                {showSubtitleMenu && (
+                  <div className="absolute bottom-full mb-2 right-0 bg-black/90 border border-white/20 rounded-lg shadow-lg z-50 min-w-max">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        disableSubtitles()
+                        setShowSubtitleMenu(false)
+                      }}
+                      className={cn(
+                        'block w-full px-4 py-2 text-sm text-left hover:bg-white/10 transition-colors',
+                        currentSubtitleTrack === null && 'bg-primary/20 text-primary'
+                      )}
+                    >
+                      Off
+                    </button>
+                    {subtitleTracks.map((track) => (
+                      <button
+                        key={track.id}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          selectSubtitleTrack(track.id)
+                          setShowSubtitleMenu(false)
+                        }}
+                        className={cn(
+                          'block w-full px-4 py-2 text-sm text-left hover:bg-white/10 transition-colors',
+                          currentSubtitleTrack === track.id && 'bg-primary/20 text-primary'
+                        )}
+                      >
+                        {track.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="flex-1" />
 

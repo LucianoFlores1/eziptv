@@ -5,6 +5,18 @@ import Hls from 'hls.js'
 import { PLAYER_RETRY_COUNT, BUFFER_CONFIG } from '@/lib/constants'
 import { isHlsUrl, buildStreamUrlCandidates, isValidStreamUrl } from '@/lib/utils'
 
+interface AudioTrack {
+  id: number
+  name: string
+  lang?: string
+}
+
+interface SubtitleTrack {
+  id: number
+  name: string
+  lang?: string
+}
+
 interface PlayerState {
   isReady: boolean
   isPlaying: boolean
@@ -12,6 +24,10 @@ interface PlayerState {
   retryCount: number
   activeUrl: string | null
   mode: 'hls' | 'native' | null
+  audioTracks: AudioTrack[]
+  currentAudioTrack: number | null
+  subtitleTracks: SubtitleTrack[]
+  currentSubtitleTrack: number | null
 }
 
 /**
@@ -20,6 +36,7 @@ interface PlayerState {
  * Manages the lifecycle for both HLS.js (.m3u8) and native <video> playback
  * (mp4, mkv, webm, mov, ts). Handles HTTPS upgrade → HTTP fallback →
  * CORS-proxy fallback automatically via buildStreamUrlCandidates.
+ * Also exposes audio and subtitle track management.
  */
 export function usePlayer() {
   const hlsRef = useRef<Hls | null>(null)
@@ -43,6 +60,10 @@ export function usePlayer() {
     retryCount: 0,
     activeUrl: null,
     mode: null,
+    audioTracks: [],
+    currentAudioTrack: null,
+    subtitleTracks: [],
+    currentSubtitleTrack: null,
   })
 
   /* ------------------------------------------------------------------ */
@@ -93,9 +114,68 @@ export function usePlayer() {
         retryCount: 0,
         activeUrl: null,
         mode: null,
+        audioTracks: [],
+        currentAudioTrack: null,
+        subtitleTracks: [],
+        currentSubtitleTrack: null,
       })
     }
   }, [destroyHls])
+
+  /* ------------------------------------------------------------------ */
+  /*  Track management                                                   */
+  /* ------------------------------------------------------------------ */
+
+  const updateAudioTracks = useCallback((hls: Hls) => {
+    const hlsAudioTracks = hls.audioTracks || []
+    const tracks: AudioTrack[] = hlsAudioTracks.map((track, idx) => ({
+      id: idx,
+      name: track.name || `Audio ${idx + 1}`,
+      lang: track.lang,
+    }))
+    const currentIdx = hls.audioTrack ?? -1
+    setState((s) => ({
+      ...s,
+      audioTracks: tracks,
+      currentAudioTrack: currentIdx >= 0 ? currentIdx : null,
+    }))
+  }, [])
+
+  const updateSubtitleTracks = useCallback((hls: Hls) => {
+    const hlsSubtitleTracks = hls.subtitleTracks || []
+    const tracks: SubtitleTrack[] = hlsSubtitleTracks.map((track, idx) => ({
+      id: idx,
+      name: track.name || `Subtitle ${idx + 1}`,
+      lang: track.lang,
+    }))
+    const currentIdx = hls.subtitleTrack ?? -1
+    setState((s) => ({
+      ...s,
+      subtitleTracks: tracks,
+      currentSubtitleTrack: currentIdx >= 0 ? currentIdx : null,
+    }))
+  }, [])
+
+  const selectAudioTrack = useCallback((trackId: number) => {
+    if (hlsRef.current) {
+      hlsRef.current.audioTrack = trackId
+      setState((s) => ({ ...s, currentAudioTrack: trackId }))
+    }
+  }, [])
+
+  const selectSubtitleTrack = useCallback((trackId: number) => {
+    if (hlsRef.current) {
+      hlsRef.current.subtitleTrack = trackId
+      setState((s) => ({ ...s, currentSubtitleTrack: trackId }))
+    }
+  }, [])
+
+  const disableSubtitles = useCallback(() => {
+    if (hlsRef.current) {
+      hlsRef.current.subtitleTrack = -1
+      setState((s) => ({ ...s, currentSubtitleTrack: null }))
+    }
+  }, [])
 
   /* ------------------------------------------------------------------ */
   /*  loadUrl – loads a single candidate into the <video> element        */
@@ -165,9 +245,32 @@ export function usePlayer() {
 
       hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
         if (gen !== generationRef.current) return
+        // Update available audio/subtitle tracks
+        updateAudioTracks(hlsInstance)
+        updateSubtitleTracks(hlsInstance)
         setState((s) => ({ ...s, isReady: true }))
         if (startPosition > 0) videoEl.currentTime = startPosition
         videoEl.play().catch(() => {})
+      })
+
+      hlsInstance.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => {
+        if (gen !== generationRef.current) return
+        updateAudioTracks(hlsInstance)
+      })
+
+      hlsInstance.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => {
+        if (gen !== generationRef.current) return
+        updateSubtitleTracks(hlsInstance)
+      })
+
+      hlsInstance.on(Hls.Events.AUDIO_TRACK_SWITCHED, () => {
+        if (gen !== generationRef.current) return
+        updateAudioTracks(hlsInstance)
+      })
+
+      hlsInstance.on(Hls.Events.SUBTITLE_TRACK_SWITCH, () => {
+        if (gen !== generationRef.current) return
+        updateSubtitleTracks(hlsInstance)
       })
 
       hlsInstance.on(Hls.Events.ERROR, (_event, data) => {
@@ -211,7 +314,7 @@ export function usePlayer() {
       })
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [destroyHls, clearTimers]
+    [destroyHls, clearTimers, updateAudioTracks, updateSubtitleTracks]
   )
 
   /* ------------------------------------------------------------------ */
@@ -304,5 +407,8 @@ export function usePlayer() {
     retry,
     hlsRef,
     videoRef,
+    selectAudioTrack,
+    selectSubtitleTrack,
+    disableSubtitles,
   }
 }

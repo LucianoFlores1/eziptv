@@ -3,6 +3,8 @@
 import { use } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/lib/db'
+import { usePaginatedContent } from '@/hooks/use-paginated-content'
+import { useAuth } from '@/hooks/use-auth'
 import { ContentGrid } from '@/components/content-grid'
 import { LoadingSpinner } from '@/components/loading-spinner'
 import { ArrowLeft, Clapperboard } from 'lucide-react'
@@ -14,22 +16,20 @@ export default function SeriesGridPage({
   params: Promise<{ categoryId: string }>
 }) {
   const { categoryId } = use(params)
+  const { credentials } = useAuth()
 
   const category = useLiveQuery(
     () => db.categories.get(categoryId),
     [categoryId]
   )
 
-  const series = useLiveQuery(
-    () =>
-      db.series
-        .where('categoryId')
-        .equals(categoryId)
-        .sortBy('name'),
-    [categoryId]
-  )
+  const { items: series, isLoading, isLoadingMore, error, sentinelRef } = usePaginatedContent({
+    credentials,
+    categoryId,
+    contentType: 'series',
+  })
 
-  if (!series) {
+  if (isLoading) {
     return <LoadingSpinner label="Loading series..." />
   }
 
@@ -55,11 +55,17 @@ export default function SeriesGridPage({
           {category?.name || 'Series'}
         </h1>
         <span className="ml-auto text-sm text-muted-foreground shrink-0">
-          {series.length} series
+          {series.length} {isLoadingMore ? '...' : ''} series
         </span>
       </div>
 
-      {series.length === 0 ? (
+      {error && (
+        <div className="mx-4 md:mx-0 mb-4 p-3 rounded-lg bg-destructive/10 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+
+      {series.length === 0 && !isLoadingMore ? (
         <div className="flex flex-col items-center justify-center py-20">
           <Clapperboard className="h-12 w-12 text-muted-foreground mb-3" />
           <p className="text-sm text-muted-foreground">
@@ -67,7 +73,7 @@ export default function SeriesGridPage({
           </p>
         </div>
       ) : (
-        <ContentGrid items={gridItems} />
+        <ContentGrid items={gridItems} sentinelRef={sentinelRef} isLoadingMore={isLoadingMore} />
       )}
     </div>
   )

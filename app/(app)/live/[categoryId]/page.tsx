@@ -1,9 +1,11 @@
 'use client'
 
-import { use } from 'react'
+import { use, useCallback, useRef, useEffect } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/lib/db'
 import { Virtuoso } from 'react-virtuoso'
+import { usePaginatedContent } from '@/hooks/use-paginated-content'
+import { useAuth } from '@/hooks/use-auth'
 import { ChannelRow } from '@/components/channel-row'
 import { LoadingSpinner } from '@/components/loading-spinner'
 import { ArrowLeft, Tv } from 'lucide-react'
@@ -15,22 +17,42 @@ export default function LiveChannelsPage({
   params: Promise<{ categoryId: string }>
 }) {
   const { categoryId } = use(params)
+  const { credentials } = useAuth()
+  const localSentinelRef = useRef<HTMLDivElement | null>(null)
 
   const category = useLiveQuery(
     () => db.categories.get(categoryId),
     [categoryId]
   )
 
-  const channels = useLiveQuery(
-    () =>
-      db.channels
-        .where('categoryId')
-        .equals(categoryId)
-        .sortBy('name'),
-    [categoryId]
+  const { items: channels, isLoading, isLoadingMore, error, sentinelRef } = usePaginatedContent({
+    credentials,
+    categoryId,
+    contentType: 'live',
+  })
+
+  // Sync local ref with hook's sentinel ref
+  const setSentinelRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      localSentinelRef.current = node
+      if (sentinelRef) {
+        sentinelRef.current = node
+      }
+    },
+    [sentinelRef]
   )
 
-  if (!channels) {
+  // Re-trigger observer when items change
+  useEffect(() => {
+    if (localSentinelRef.current) {
+      localSentinelRef.current.style.opacity = '0'
+      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+      localSentinelRef.current.offsetHeight
+      localSentinelRef.current.style.opacity = ''
+    }
+  }, [channels.length])
+
+  if (isLoading) {
     return <LoadingSpinner label="Loading channels..." />
   }
 
@@ -48,11 +70,17 @@ export default function LiveChannelsPage({
           {category?.name || 'Channels'}
         </h1>
         <span className="ml-auto text-sm text-muted-foreground shrink-0">
-          {channels.length} channels
+          {channels.length} {isLoadingMore ? '...' : ''} channels
         </span>
       </div>
 
-      {channels.length === 0 ? (
+      {error && (
+        <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+
+      {channels.length === 0 && !isLoadingMore ? (
         <div className="flex flex-col items-center justify-center py-20">
           <Tv className="h-12 w-12 text-muted-foreground mb-3" />
           <p className="text-sm text-muted-foreground">
@@ -60,23 +88,35 @@ export default function LiveChannelsPage({
           </p>
         </div>
       ) : (
-        <Virtuoso
-          useWindowScroll
-          totalCount={channels.length}
-          itemContent={(index) => {
-            const ch = channels[index]
-            return (
-              <div className="mb-2">
-                <ChannelRow
-                  streamId={ch.streamId}
-                  name={ch.name}
-                  icon={ch.streamIcon}
-                  num={ch.num}
-                />
-              </div>
-            )
-          }}
-        />
+        <>
+          <Virtuoso
+            useWindowScroll
+            totalCount={channels.length}
+            itemContent={(index) => {
+              const ch = channels[index]
+              return (
+                <div className="mb-2">
+                  <ChannelRow
+                    streamId={ch.streamId}
+                    name={ch.name}
+                    icon={ch.streamIcon}
+                    num={ch.num}
+                  />
+                </div>
+              )
+            }}
+          />
+          {/* Sentinel for infinite scroll detection */}
+          <div 
+            ref={setSentinelRef} 
+            className="h-20 w-full flex items-center justify-center" 
+            aria-hidden="true"
+          >
+            {isLoadingMore && (
+              <div className="text-sm text-muted-foreground">Loading more...</div>
+            )}
+          </div>
+        </>
       )}
     </div>
   )

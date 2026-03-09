@@ -3,6 +3,8 @@
 import { use } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/lib/db'
+import { usePaginatedContent } from '@/hooks/use-paginated-content'
+import { useAuth } from '@/hooks/use-auth'
 import { ContentGrid } from '@/components/content-grid'
 import { LoadingSpinner } from '@/components/loading-spinner'
 import { ArrowLeft, Film } from 'lucide-react'
@@ -14,27 +16,25 @@ export default function MoviesGridPage({
   params: Promise<{ categoryId: string }>
 }) {
   const { categoryId } = use(params)
+  const { credentials } = useAuth()
 
   const category = useLiveQuery(
     () => db.categories.get(categoryId),
     [categoryId]
   )
 
-  const movies = useLiveQuery(
-    () =>
-      db.movies
-        .where('categoryId')
-        .equals(categoryId)
-        .sortBy('name'),
-    [categoryId]
-  )
+  const { items: movies, isLoading, isLoadingMore, error, sentinelRef } = usePaginatedContent({
+    credentials,
+    categoryId,
+    contentType: 'vod',
+  })
 
   const playbackStates = useLiveQuery(
     () => db.playbackState.where('contentType').equals('vod').toArray(),
     []
   )
 
-  if (!movies) {
+  if (isLoading) {
     return <LoadingSpinner label="Loading movies..." />
   }
 
@@ -72,11 +72,17 @@ export default function MoviesGridPage({
           {category?.name || 'Movies'}
         </h1>
         <span className="ml-auto text-sm text-muted-foreground shrink-0">
-          {movies.length} movies
+          {movies.length} {isLoadingMore ? '...' : ''} movies
         </span>
       </div>
 
-      {movies.length === 0 ? (
+      {error && (
+        <div className="mx-4 md:mx-0 mb-4 p-3 rounded-lg bg-destructive/10 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+
+      {movies.length === 0 && !isLoadingMore ? (
         <div className="flex flex-col items-center justify-center py-20">
           <Film className="h-12 w-12 text-muted-foreground mb-3" />
           <p className="text-sm text-muted-foreground">
@@ -84,7 +90,7 @@ export default function MoviesGridPage({
           </p>
         </div>
       ) : (
-        <ContentGrid items={gridItems} />
+        <ContentGrid items={gridItems} sentinelRef={sentinelRef} isLoadingMore={isLoadingMore} />
       )}
     </div>
   )
