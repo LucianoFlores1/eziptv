@@ -41,7 +41,7 @@ A free, open-source IPTV player built as a Progressive Web App. Browse Live TV c
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/eziptv.git
+git clone https://github.com/LucianoFlores1/eziptv.git
 cd eziptv
 
 # Install dependencies
