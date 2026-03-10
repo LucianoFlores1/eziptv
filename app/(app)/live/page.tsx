@@ -50,7 +50,7 @@ export default function LiveCategoriesPage() {
               <CategoryRow
                 name={cat.name}
                 count={channelCounts?.[cat.id]}
-                href={`/live/${cat.id}`}
+                href={`/live/category?category=${encodeURIComponent(cat.id)}`}
               />
             </div>
           )

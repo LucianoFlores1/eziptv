@@ -50,7 +50,7 @@ export default function MoviesCategoriesPage() {
               <CategoryRow
                 name={cat.name}
                 count={movieCounts?.[cat.id]}
-                href={`/movies/${cat.id}`}
+                href={`/movies/category?category=${encodeURIComponent(cat.id)}`}
               />
             </div>
           )

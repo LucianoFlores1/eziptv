@@ -56,12 +56,12 @@ export default function FavoritesPage() {
           const mv = await db.movies.get(fav.contentId)
           name = mv?.name ?? 'Unknown Movie'
           icon = mv?.streamIcon ?? ''
-          href = `/movies/${mv?.categoryId ?? ''}/${fav.contentId}`
+          href = `/movies/detail?category=${encodeURIComponent(mv?.categoryId ?? '')}&id=${fav.contentId}`
         } else {
           const sr = await db.series.get(fav.contentId)
           name = sr?.name ?? 'Unknown Series'
           icon = sr?.cover ?? ''
-          href = `/series/${sr?.categoryId ?? ''}/${fav.contentId}`
+          href = `/series/detail?category=${encodeURIComponent(sr?.categoryId ?? '')}&id=${fav.contentId}`
         }
 
         loaded.push({

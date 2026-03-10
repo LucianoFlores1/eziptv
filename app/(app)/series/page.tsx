@@ -50,7 +50,7 @@ export default function SeriesCategoriesPage() {
               <CategoryRow
                 name={cat.name}
                 count={seriesCounts?.[cat.id]}
-                href={`/series/${cat.id}`}
+                href={`/series/category?category=${encodeURIComponent(cat.id)}`}
               />
             </div>
           )

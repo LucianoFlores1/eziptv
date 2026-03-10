@@ -83,7 +83,7 @@ export default function SearchPage() {
           icon: m.streamIcon,
           type: 'vod' as const,
           categoryId: m.categoryId,
-          href: `/movies/${m.categoryId}/${m.streamId}`,
+          href: `/movies/detail?category=${encodeURIComponent(m.categoryId)}&id=${m.streamId}`,
         })),
         ...series.map((s) => ({
           id: s.seriesId,
@@ -91,7 +91,7 @@ export default function SearchPage() {
           icon: s.cover,
           type: 'series' as const,
           categoryId: s.categoryId,
-          href: `/series/${s.categoryId}/${s.seriesId}`,
+          href: `/series/detail?category=${encodeURIComponent(s.categoryId)}&id=${s.seriesId}`,
         })),
       ]
 

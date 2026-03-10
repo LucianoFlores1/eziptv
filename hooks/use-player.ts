@@ -35,7 +35,7 @@ interface PlayerState {
  *
  * Manages the lifecycle for both HLS.js (.m3u8) and native <video> playback
  * (mp4, mkv, webm, mov, ts). Handles HTTPS upgrade → HTTP fallback →
- * CORS-proxy fallback automatically via buildStreamUrlCandidates.
+ * URL candidate fallback automatically via buildStreamUrlCandidates.
  * Also exposes audio and subtitle track management.
  */
 export function usePlayer() {
