@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useState, useEffect, useCallback } from 'react'
+import { Capacitor } from '@capacitor/core'
 import { usePlayer } from '@/hooks/use-player'
 import { usePlayback } from '@/hooks/use-playback'
 import { PLAYBACK_SAVE_INTERVAL } from '@/lib/constants'
@@ -63,6 +64,15 @@ export function VideoPlayer({
   const [copied, setCopied] = useState(false)
   const [showAudioMenu, setShowAudioMenu] = useState(false)
   const [showSubtitleMenu, setShowSubtitleMenu] = useState(false)
+  const [nativeLaunchError, setNativeLaunchError] = useState<string | null>(null)
+  const [nativeActive, setNativeActive] = useState(false)
+  const [nativeLaunching, setNativeLaunching] = useState(false)
+  const nativePlayerIdRef = useRef(`native-${contentType}-${contentId}`)
+
+  const isNativeAndroid =
+    typeof window !== 'undefined' &&
+    Capacitor.isNativePlatform() &&
+    Capacitor.getPlatform() === 'android'
 
   // MKV gate: for non-HLS VOD, show a choice screen first instead of
   // trying the internal player automatically. However, bypass this gate
@@ -89,6 +99,33 @@ export function VideoPlayer({
   // (not a blob: or proxied URL), since external apps handle their own requests
   const externalUrl = streamUrl
 
+  const launchNativePlayer = useCallback(async () => {
+    if (!isNativeAndroid || !isValidStreamUrl(streamUrl)) return
+
+    setNativeLaunching(true)
+    setNativeLaunchError(null)
+
+    try {
+      const { CapacitorVideoPlayer } = await import('capacitor-video-player')
+      await CapacitorVideoPlayer.initPlayer({
+        mode: 'fullscreen',
+        url: streamUrl,
+        playerId: nativePlayerIdRef.current,
+        title: title || 'EZIPTV',
+        smallTitle: contentType.toUpperCase(),
+        showControls: true,
+        pipEnabled: true,
+        bkmodeEnabled: true,
+      })
+      setNativeActive(true)
+    } catch {
+      setNativeLaunchError('Native Android player failed to open. Falling back to internal player.')
+      setNativeActive(false)
+    } finally {
+      setNativeLaunching(false)
+    }
+  }, [isNativeAndroid, streamUrl, title, contentType])
+
   // ---- Clipboard copy ----
   const handleCopyUrl = useCallback(async () => {
     try {
@@ -113,6 +150,7 @@ export function VideoPlayer({
     const videoEl = videoElRef.current
     if (!videoEl) return
     if (!isValidStreamUrl(streamUrl)) return
+    if (isNativeAndroid) return
 
     // If this is a non-HLS VOD and the user hasn't clicked "Try Internal Player",
     // don't auto-start.
@@ -124,7 +162,25 @@ export function VideoPlayer({
       destroyPlayer()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [streamUrl, bypassGate])
+  }, [streamUrl, bypassGate, isNativeAndroid, isNonHlsVod, initPlayer, startPosition, destroyPlayer])
+
+  useEffect(() => {
+    if (!isNativeAndroid) return
+    if (!isValidStreamUrl(streamUrl)) return
+
+    void launchNativePlayer()
+
+    return () => {
+      void (async () => {
+        try {
+          const { CapacitorVideoPlayer } = await import('capacitor-video-player')
+          await CapacitorVideoPlayer.stopAllPlayers()
+        } catch {
+          // ignore cleanup errors
+        }
+      })()
+    }
+  }, [isNativeAndroid, streamUrl, launchNativePlayer])
 
   // ---- Save playback position periodically (VOD / Series only) ----
   useEffect(() => {
@@ -456,6 +512,54 @@ export function VideoPlayer({
         >
           Go Back
         </button>
+      </div>
+    )
+  }
+
+  if (isNativeAndroid && !nativeLaunchError) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 bg-black p-6 text-center">
+        {nativeLaunching ? (
+          <>
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-muted-foreground border-t-primary" />
+            <p className="text-sm text-muted-foreground">Opening native Android player...</p>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-muted-foreground">
+              {nativeActive
+                ? 'Native player is active. If you closed it, tap below to reopen.'
+                : 'Ready to open native Android player.'}
+            </p>
+            <button
+              onClick={() => {
+                void launchNativePlayer()
+              }}
+              className="flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+            >
+              <Play className="h-4 w-4" />
+              Open Native Player
+            </button>
+          </>
+        )}
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleCopyUrl}
+            className="flex h-9 items-center gap-2 rounded-lg bg-secondary px-3 text-xs font-medium text-secondary-foreground transition-colors hover:bg-accent"
+          >
+            {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+            {copied ? 'Copied!' : 'Copy Stream URL'}
+          </button>
+
+          <button
+            onClick={onBack}
+            className="flex h-9 items-center gap-2 rounded-lg bg-secondary px-3 text-xs font-medium text-secondary-foreground transition-colors hover:bg-accent"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back
+          </button>
+        </div>
       </div>
     )
   }

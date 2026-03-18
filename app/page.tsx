@@ -19,7 +19,7 @@ export default function RootPage() {
   }, [isAuthenticated, isLoading, router])
 
   return (
-    <div className="flex h-dvh items-center justify-center bg-background">
+    <div className="flex h-dvh items-center justify-center bg-blue-600">
       <LoadingSpinner label="Loading..." />
     </div>
   )
