@@ -116,6 +116,7 @@ export function VideoPlayer({
         showControls: true,
         pipEnabled: true,
         bkmodeEnabled: true,
+        chromecast: false,
       })
       setNativeActive(true)
     } catch {
